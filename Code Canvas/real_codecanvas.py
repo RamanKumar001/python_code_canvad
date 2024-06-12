@@ -1,17 +1,18 @@
 from tkinter import *
 from tkinter import *
+import tkinter as tk
 import tkinter.ttk as ttk
 from tkinter import messagebox
 from tkinter.filedialog import askopenfilename,asksaveasfilename
 import os
 import subprocess
-import keyword
-import builtins
 import webbrowser
 import re  #use in search and replace
-import tkinter as tk
 from PIL import Image, ImageTk
 import time
+import many_help
+
+font_size = 13
 
 def show_image():
     # Define the image path
@@ -55,6 +56,7 @@ def show_image():
 
     # Start the Tkinter event loop
     image_window.mainloop()
+    pass
 
 def execute_code():
     #deafault font size
@@ -63,18 +65,41 @@ def execute_code():
     root.geometry('1000x500')
     root.minsize(400,650)
     root.title("CodeCanvas - Painting Code,Crafting Solution")
-    root.iconphoto(True, PhotoImage(file="D:\Web Development\Python Package\Python Tkinter\Projects\Code Canvas\logo.png"))
+    root.iconphoto(True, PhotoImage(file="logo.png"))
     global path
     check = StringVar()  #define a variable
     check_auto_save = StringVar()
     check_auto_save.set("No")
     check.set("Light")
-
-    font_size = 13
     path = ""
     global output_visible 
-    output_visible = False# Variable to track if output frame is visible
-            
+    output_visible = False
+    # Variable to track if output frame is visible
+
+    # def install_py():
+    #     messagebox.showinfo("Python Install","For run this code editor you need to install python in your system.")
+
+    def check_dependencies():
+        required_packages = ['tkinter', 'os', 'subprocess','keyword','builtins','webbrowser','re','PIL','time','importlib','sys']  # List of required packages
+        missing_packages = []
+
+        try:
+            import importlib.util  # Check if importlib.util is available
+            for package in required_packages:
+                if not importlib.util.find_spec(package):
+                    missing_packages.append(package)
+        except AttributeError:
+            # Fallback for older Python versions without importlib.util
+            import importlib
+            for package in required_packages:
+                try:
+                    importlib.import_module(package)
+                except ImportError:
+                    missing_packages.append(package)
+        if missing_packages:
+            messagebox.showinfo("Dependencies Missing", "Please ensure your internet connection is active for installing dependencies.")
+            subprocess.Popen(["pip", "install"] + missing_packages, shell=True)  # Install missing packages
+                
     #use to increase a font using shortcut key which is bind in a last of this page
     def font_increase(event=None):
         global font_size
@@ -118,7 +143,7 @@ def execute_code():
             with open(path,"r") as file:
                 data = file.read()
                 code_area.insert(1.0,data)
-                # file.close()
+                file.close()
 
     def save_file(event=None):
         global path
@@ -133,13 +158,46 @@ def execute_code():
 
     def save_as(event=None):
         global path
-        path = asksaveasfilename(initialfile='index',defaultextension='.py',filetypes=[
-            ("Python Files", "*.py"), ("Text Documents", "*.txt"), ("HTML Files", "*.html"), 
-            ("Java Files", "*.java"), ("JavaScript Files", "*.js"), ("CSS Files", "*.css")])
+        path = asksaveasfilename(initialfile='index', defaultextension='.py', filetypes=[
+            ("Python Files", "*.py"), ("Text Documents", "*.txt"), ("All Files", "*.*")])
 
-        if path != "":     #beacouse if user click on cancel in save as popup box we face error 
-            with open(path,'w') as file: 
-                file.write(code_area.get(1.0,END))
+        if path != "":
+            # Check if the 'code canvas' folder exists on the desktop, if not, create it
+            desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+            code_canvas_path = os.path.join(desktop_path, "code_canvas")
+            if not os.path.exists(code_canvas_path):
+                os.mkdir(code_canvas_path)
+
+            # Define the mapping of extensions to folder names
+            extension_folders = {
+                ".html": "html",
+                ".py": "python",
+                ".css": "css",
+                ".js": "javascript",
+                ".txt": "text",
+                ".java": "java"
+                # Add more extensions and corresponding folder names as needed
+            }
+
+            # Get the extension of the file being saved
+            _, file_extension = os.path.splitext(path)
+
+            # Check if the extension is mapped to a folder
+            if file_extension in extension_folders:
+                # Create the folder if it doesn't exist in 'code canvas' folder
+                file_folder = os.path.join(code_canvas_path, extension_folders[file_extension])
+                if not os.path.exists(file_folder):
+                    os.mkdir(file_folder)
+
+                # Save the file in the corresponding folder within 'code canvas' folder
+                file_path = os.path.join(file_folder, os.path.basename(path))
+                with open(file_path, 'w') as file:
+                    file.write(code_area.get(1.0, END))
+            else:
+                messagebox.showerror("Error", "Unsupported file extension.")
+
+            # Update the title of the main window with the saved file path
+            root.title(path)
      
     # Function to auto-save the file
     def auto_save():
@@ -148,7 +206,6 @@ def execute_code():
             with open(path, 'w') as file:
                 file.write(code_area.get(1.0, END))
             root.after(1000, auto_save)  # Auto-save every 1 second (1000 milliseconds)
-
 
     # Start auto-save loop
     if check_auto_save.get()=="No":
@@ -181,7 +238,7 @@ def execute_code():
     def copy(event=None):
         code_area.event_generate(("<<Copy>>"))
     def paste(event=None):
-        code_area.event_generate(("<<Paste>>"))
+        display_line_numbers()
 
 
     #theme menu action
@@ -195,15 +252,25 @@ def execute_code():
             code_area.configure(bg='#333333',fg='white')
             code_area.configure(insertbackground="white")
             output_area.configure(insertbackground="white")
-            
-    #run menu action
-    def run(event=None):
+
+    #run python file
+    def run_python(event=None):
         global path
         if path == "":
             messagebox.showerror("Remember", "Please First Save The File")
             save_as()
         else:
-            command = f"python {path}"
+            # Ensure the path is correctly set to include the code_canvas and python folders
+            desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+            code_canvas_path = os.path.join(desktop_path, "code_canvas", "python")
+            
+            # Update path to reflect the correct location if it's not already in the code_canvas/python directory
+            if not path.startswith(code_canvas_path):
+                path = os.path.join(code_canvas_path, os.path.basename(path))
+
+            # Ensure the path is correctly quoted to handle spaces
+            quoted_path = f'"{path}"'
+            command = f"python {quoted_path}"
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output, error = process.communicate()
             output_area.delete(1.0, END)
@@ -213,8 +280,8 @@ def execute_code():
             else:
                 output_area.configure(fg='red', bg='yellow')
                 output_area.insert(1.0, error)
-                toggle_output()  # Show output frame
-        
+            toggle_output()  # Show output frame
+            
 
     # Function to toggle visibility of output frame
     def toggle_output():
@@ -254,10 +321,13 @@ def execute_code():
                             2. Copy                                         Ctrl + C
                             3. Paste                                        Ctrl + V
                             4. Search and Replace                           Ctrl + P
+                            5. Format Document                              Ctrl + F
                             5. Font Increase                                Ctrl + I
                             5. Font Decrease                                Ctrl + D
+                            6. Set Font Size                                --------
+                            7. Import Code                                  Ctrl + m
                             
-                            ---------------------- Theme Menu -----------------------
+                                        ------- Theme Menu -----
                             1. Light Theme                                  Ctrl + T
                             2. Dark Theme                                   ctrl + T
                             
@@ -271,7 +341,12 @@ def execute_code():
                             
                             ---------------------- Help Menu -----------------------
                             1. All Shortcut                                 Ctrl + W
-                            2. About Us                                     Ctrl + U''')
+                            2. About Us                                     Ctrl + U
+                            
+                            ---------------------- Additional -----------------------
+                            1.HTML Boilerplate                            ! (Shift+1)
+                            '''
+    )
 
     #for give indentaion 
 
@@ -299,19 +374,25 @@ def execute_code():
 
     # Function to highlight Python keywords
     def highlight_exact_keywords(event=None):
-        keywords = keyword.kwlist
-        for word in keywords:
+        data = many_help.all_words
+        for word in data:
             start_index = "1.0"
             while True:
                 start_index = code_area.search(fr'\y{word}\y', start_index, stopindex="end", regexp=True)
                 if not start_index:
                     break
-                end_index = f"{start_index}+{len(word)}c"
-                code_area.tag_add("highlight", start_index, end_index)
-                start_index = end_index
-        
-        code_area.tag_config("highlight", foreground="orangered", font=('arial', font_size, 'italic'))
-
+                # Check if the word is not enclosed in double or single quotes
+                line_start, col_start = map(int, start_index.split('.'))
+                line_end, col_end = line_start, col_start + len(word)
+                line_text = code_area.get(f"{line_start}.{col_start-1}", f"{line_end}.{col_end+1}")
+                if not (line_text.startswith('"') and line_text.endswith('"')) and not (line_text.startswith("'") and line_text.endswith("'")):
+                    end_index = f"{start_index}+{len(word)}c"
+                    code_area.tag_add("highlight_html", start_index, end_index)
+                    code_area.tag_config("highlight_html", foreground="crimson", font=('arial', font_size,'italic'))
+                    start_index = end_index  # Move this line inside the if condition
+                else:
+                    start_index = f"{start_index}+1c"  # Move to the next character if word is in quotes
+                    
     #function to highlight comment
     def highlight_comments(event=None):
         start_index = "1.0"
@@ -418,6 +499,7 @@ def execute_code():
                 messagebox.showerror("Error", "Please save the file with a .java extension")
             else:
                 # Compile Java file
+                messagebox.showerror("Find JDK","For run java file first you need to install jdk.")
                 compile_command = f"javac {path}"
                 compile_process = subprocess.Popen(compile_command, shell=True, stdout=subprocess.PIPE,
                                                     stderr=subprocess.PIPE)
@@ -442,8 +524,170 @@ def execute_code():
                     else:
                         output_area.configure(fg='red', bg='yellow')
                         output_area.insert(1.0, run_error.decode())
-                        
+                #function for right-click on mouse window show
+    #function for right-click on mouse window show
+    def show_context_menu(event=None):
+        context_menu = Menu(root, tearoff=0,bg='lightgray',fg='darkred',font=('Cambria',9,'bold'))
 
+        # Create a submenu for Paste with more options
+        run_submenu = Menu(context_menu, tearoff=0,bg='lightgray',fg='darkred',font=('Cambria',9,'bold'))
+        run_submenu.add_command(label="Run Python",command=run_python)
+        run_submenu.add_separator()
+        run_submenu.add_command(label="Run Java",command=run_java)
+        run_submenu.add_separator()
+        run_submenu.add_command(label="Run Html",command=run_html)
+
+        # Add the submenu to the Paste option
+        context_menu.add_command(label="Save File     ",command=save_file)
+        context_menu.add_separator()
+        context_menu.add_cascade(label="Run File  ", menu=run_submenu)
+        context_menu.add_separator()
+        # Add other options to the context menu
+        context_menu.add_command(label="Format Document",command=format_code)
+        context_menu.add_separator()
+        context_menu.add_command(label="Search & Replace",command=toggle_search_replace)
+        context_menu.add_separator()
+        context_menu.add_command(label="Clear File",command=clear)
+        context_menu.add_separator()
+        context_menu.add_command(label="All Shortcuts",command=shortcut)
+
+        # Post the context menu at the cursor's position
+        context_menu.post(event.x_root, event.y_root)
+
+    # Function to format code
+    def format_code(event=None):
+        code = code_area.get(1.0, END)
+        formatted_code = ""
+
+        # Replace tabs with 4 spaces
+        code = code.replace('\t', ' ' * 4)
+
+        # Use regular expressions to add proper Python indentation
+        indent_level = 0
+        for line in code.splitlines():
+            line = line.strip()
+            if line:  # Ignore empty lines
+                if line.endswith((":", "(", "[", "{")):
+                    formatted_code += ' ' * (indent_level * 4) + line + '\n'
+                    indent_level += 1
+                elif line.startswith(("}", "]", ")")):
+                    indent_level -= 1
+                    formatted_code += ' ' * (indent_level * 4) + line + '\n'
+                else:
+                    formatted_code += ' ' * (indent_level * 4) + line + '\n'
+            else:
+                formatted_code += '\n'
+
+        code_area.delete(1.0, END)
+        code_area.insert(1.0, formatted_code.strip())
+
+    def set_font_size(event=None):
+        global font_size
+        # Create a new window for setting font size
+        font_size_window = Toplevel(root)
+        font_size_window.geometry("300x100")
+        font_size_window.title("Set Font Size")
+        
+        # Label and Entry for entering font size
+        Label(font_size_window, text="Enter Font Size:").pack()
+        font_size_entry = Entry(font_size_window)
+        font_size_entry.pack()
+        
+        # OK and Cancel buttons
+        def set_size(event=None):
+            try:
+                new_font_size = int(font_size_entry.get())
+                if new_font_size > 0:
+                    font_size = new_font_size
+                    messagebox.showinfo("Success", f"Font Size set to {font_size}")
+                    font_size_window.destroy()
+                    
+                    # Update the font size of the code area and output area
+                    code_area.config(font=('arial', font_size))
+                    output_area.config(font=('arial', font_size))
+                else:
+                    messagebox.showerror("Error", "Please enter a positive integer for font size.")
+            except ValueError:
+                messagebox.showerror("Error", "Please enter a valid integer for font size.")
+        
+        ok_button = Button(font_size_window, text="OK", command=set_size)
+        ok_button.pack()
+        
+        cancel_button = Button(font_size_window, text="Cancel", command=font_size_window.destroy)
+        cancel_button.pack()
+
+    #add importing code 
+    def code_help(event=None):
+    # Create a new window for code help
+        code_help_window = Toplevel(root)
+        code_help_window.geometry("250x150")
+        code_help_window.title("Import Code")
+        code_help_window.config(bg="#414a4c")
+
+        # Label and Entry for searching code
+        Label(code_help_window, text="Enter Function Name:",bg="#414a4c",fg="White",font=('arial',font_size,'bold')).pack(pady=5)
+        function_name_entry = Entry(code_help_window)
+        function_name_entry.pack()
+
+        # Import and Cancel buttons
+        def import_code():
+            function_name = function_name_entry.get()
+            if function_name:
+                try:
+                    with open('many_help.py', 'r') as file:
+                        lines = file.readlines()
+                        start_index = -1
+                        end_index = -1
+                        in_function = False
+                        for i, line in enumerate(lines):
+                            if line.strip().startswith(f'def {function_name}('):
+                                start_index = i + 1
+                                in_function = True
+                            elif in_function and line.strip() == "":
+                                end_index = i
+                                break
+                        
+                        if start_index != -1 and end_index != -1:
+                            function_code = "".join(lines[start_index:end_index])
+                            # Remove four spaces from each line
+                            function_code_stripped = "\n".join(line[4:] if len(line) > 4 else line for line in function_code.split("\n"))
+                            # Append the code to the editor
+                            code_area.insert(END, function_code_stripped)
+                            # Highlight exact keywords after importing code
+                            highlight_exact_keywords()
+                            highlight_comments()
+                            display_line_numbers()
+                        else:
+                            messagebox.showerror("Error", f"Function '{function_name}' not found see the import function names.")
+                except FileNotFoundError:
+                    messagebox.showerror("Error", "File 'many_help.py' not found.")
+            else:
+                messagebox.showerror("Error", "Please enter a function name.")
+        
+        import_button = Button(code_help_window, text="Import", command=import_code,bg='lightgreen',fg='darkblue',font=('arial',10,'bold'))
+        import_button.pack(pady=5)
+
+        cancel_button = Button(code_help_window, text="Cancel", command=code_help_window.destroy,bg='lightgreen',fg='darkblue',font=('arial',10,'bold'))
+        cancel_button.pack(pady=5)
+    def insert_html_boilerplate(event=None):
+        if path and path.endswith('.html'):
+            html_boilerplate = """<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Document</title>
+    </head>
+    <body>
+        
+    </body>
+</html>"""
+            code_area.insert(END, html_boilerplate)
+            display_line_numbers()
+        else:
+            messagebox.showinfo("Information", "HTML boilerplate can only be inserted in HTML files.")
+
+    check_dependencies()  # Check and install dependencies
     #create frame for code
     #when you use any variable in font so give it in tuple - font_size(variable define in starting point)
     code_frame = LabelFrame(root,text="Code",font=('arial',font_size,'bold')) 
@@ -534,7 +778,7 @@ def execute_code():
     m1.add_separator()
     m1.add_command(label="Open File    ",command=open_file,accelerator="Ctrl + O")
     m1.add_separator()
-    m1.add_radiobutton(label='Auto Save',accelerator="Ctrl + E",variable=check_auto_save,value='Yes',command=auto_save)
+    m1.add_radiobutton(label='Auto Save',accelerator="None",variable=check_auto_save,value='Yes',command=auto_save)
     m1.add_separator()
     m1.add_command(label="Save    ",command=save_file,accelerator="Ctrl + S")
     m1.add_separator()
@@ -551,11 +795,17 @@ def execute_code():
     m2.add_separator()
     m2.add_command(label="Paste         ",command=paste,accelerator="Ctrl + V")
     m2.add_separator()
-    m2.add_command(label="Search and Replace", command=toggle_search_replace,accelerator="Ctrl + p") 
+    m2.add_command(label="Search and Replace", command=toggle_search_replace,accelerator="Ctrl + p")
+    m2.add_separator() 
+    m2.add_command(label="Format Code", command=format_code,accelerator="Ctrl + f")
     m2.add_separator()
     m2.add_command(label="Font Increase  ",command=font_increase,accelerator="Ctrl + i")
     m2.add_separator()
     m2.add_command(label="Font decrease  ",command=font_decrease,accelerator="Ctrl + d")
+    m2.add_separator()
+    m2.add_command(label="Set Font Size  ",command=set_font_size)
+    m2.add_separator()
+    m2.add_command(label="Import Code  ",command=code_help,accelerator="Ctrl + Shift + h")
     main_menu.add_cascade(label="Edit    ",menu=m2)
 
     #theme menu
@@ -567,8 +817,8 @@ def execute_code():
 
     #run menu
     code_run=Menu(main_menu,tearoff=0)
-    code_run.add_command(label = "Run Python",command=run,accelerator='Ctrl + r')
-    # code_run.add_command(label = "Run Java ",command=run_java,accelerator='Ctrl + j')
+    code_run.add_command(label = "Run Python",command=run_python,accelerator='Ctrl + r')
+    code_run.add_command(label = "Run Java ",command=run_java,accelerator='Ctrl + j')
     code_run.add_command(label = "Run Html ",command=run_html,accelerator='Ctrl + h')
     main_menu.add_cascade(label="Run  ",menu=code_run)
 
@@ -584,7 +834,6 @@ def execute_code():
 
     root.config(menu=main_menu)
 
-
     #we are using bind to connect a shortcut keys
     #file option shortcut keys
     root.bind("<Control-n>",new_file)
@@ -597,9 +846,10 @@ def execute_code():
     #edit menu
     root.bind("<Control-x>",cut)
     root.bind("<Control-c>",copy)
+    root.bind("<Control-v>", paste)
 
     #for run shortcut key
-    root.bind("<Control-r>",run)
+    root.bind("<Control-r>",run_python)
 
     #for clear shortcut key
     root.bind("<Control-k>",clear)
@@ -632,13 +882,21 @@ def execute_code():
     #for about us
     root.bind("<Control-u>",About_us)
 
+    #for right-click bind
+    code_area.bind("<Button-3>", show_context_menu)
+
+    #for importing code
+    root.bind("<Control-m>", code_help)
+
+    #for html boilerplate
+    root.bind("!", insert_html_boilerplate)
+    #show msg to install python 
+
     root.mainloop()
 
 # Display the image for 5 seconds
 show_image()
-
 # Wait for 5 seconds before executing the code
 time.sleep(0)
-
 # Execute the code
 execute_code()
